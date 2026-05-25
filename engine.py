@@ -61,7 +61,10 @@ class Config:
     CIRCUIT_BREAKER_COOLDOWN = 15
     POST_ONLY_RETRY_COOLDOWN = 10
     BAD_DATA_THRESHOLD_PCT = 0.15
-    FEE_BUFFER_PCT = 0.002
+    
+    # 手續費相關設定
+    FEE_BUFFER_PCT = 0.0              # 改為 0.0，因為外扣 MAX Token，不需多鎖定主資產餘額
+    FEE_RATE_MAX_TOKEN = 0.00045      # 0.045% 預估 Maker 手續費率 (使用 MAX Token 支付)
 
     API_KEY = os.environ.get("MAX_ACCESS_KEY") or os.environ.get("MAX_API_KEY", "")
     API_SECRET = os.environ.get("MAX_SECRET_KEY") or os.environ.get("MAX_API_SECRET", "")
@@ -145,10 +148,11 @@ class GridLogger:
             f"🚀 [API] 送出掛單: {side_u} {mkt} - 價格: {px}，數量: {fmt_btc(volume)} BTC"
         )
 
-    def order_success(self, order_id: int, post_only: bool = True, dry_run: bool = False) -> None:
+    def order_success(self, order_id: int, post_only: bool = True, dry_run: bool = False, est_fee_twd: float = 0.0) -> None:
         tag = "Maker - Post-Only" if post_only else "Maker"
         suffix = " (DRY-RUN 模擬)" if dry_run else ""
-        self._emit(f"📌 [SUCCESS] MAX 訂單建立成功 - ID: {order_id} ({tag}){suffix}")
+        fee_str = f" | 預估手續費: NT${est_fee_twd:.2f}" if est_fee_twd > 0 else ""
+        self._emit(f"📌 [SUCCESS] MAX 訂單建立成功 - ID: {order_id} ({tag}){suffix}{fee_str}")
 
     def order_cancel(self, market: str, price: float, decimals: int, order_id: Optional[int] = None) -> None:
         oid = f" ID: {order_id}" if order_id else ""
@@ -157,10 +161,11 @@ class GridLogger:
             f"{fmt_price_for_market(price, market, decimals)}{oid}"
         )
 
-    def order_filled(self, side: str, market: str, price: float, volume: float, decimals: int) -> None:
+    def order_filled(self, side: str, market: str, price: float, volume: float, decimals: int, est_fee_twd: float = 0.0) -> None:
+        fee_str = f" (預估手續費: NT${est_fee_twd:.2f})" if est_fee_twd > 0 else ""
         self._emit(
             f"✅ [FILLED] {side.upper()} {market.upper()} @ "
-            f"{fmt_price_for_market(price, market, decimals)}，數量: {fmt_btc(volume)} BTC"
+            f"{fmt_price_for_market(price, market, decimals)}，數量: {fmt_btc(volume)} BTC{fee_str}"
         )
 
 
@@ -420,7 +425,6 @@ class RollingGridLeg:
 
     async def _quote_available(self) -> float:
         bal = await self.engine.get_balances()
-        cur = self.spec.quote_currency
         if self.spec.side == "buy":
             frozen = self.engine.frozen_usdt
             return max(0.0, bal.get("usdt", 0.0) - frozen)
@@ -434,8 +438,6 @@ class RollingGridLeg:
         return slot["volume"] * buf
 
     async def _has_balance(self, slot: Dict[str, Any]) -> bool:
-        if self.spec.side == "buy":
-            return await self._quote_available() >= self._quote_needed(slot)
         return await self._quote_available() >= self._quote_needed(slot)
 
     def _on_place_success(self, slot: Dict[str, Any]):
@@ -462,7 +464,6 @@ class RollingGridLeg:
         slot["frozen_quote"] = 0.0
 
     def _on_fill(self, slot: Dict[str, Any]):
-        price = slot["price"]
         vol = slot["volume"]
         if Config.DRY_RUN:
             if self.spec.side == "buy":
@@ -488,12 +489,22 @@ class RollingGridLeg:
             if not filled:
                 continue
             self._on_fill(slot)
+            
+            # 計算成交時的預估台幣手續費並累加到 Engine 統計中
+            if self.spec.side == "buy":
+                est_fee_twd = slot["volume"] * self.engine.btc_twd_price * Config.FEE_RATE_MAX_TOKEN
+            else:
+                est_fee_twd = self.spec.order_quote_amount * Config.FEE_RATE_MAX_TOKEN
+            
+            self.engine.total_fee_twd += est_fee_twd
+
             self.engine.logger.order_filled(
                 self.spec.side,
                 self.spec.market,
                 slot["price"],
                 slot["volume"],
                 self.spec.price_decimals,
+                est_fee_twd=est_fee_twd
             )
             slot["status"] = self.IDLE
             slot["order_id"] = None
@@ -577,6 +588,13 @@ class RollingGridLeg:
         log.api_submit(
             self.spec.side, self.spec.market, price, vol, self.spec.price_decimals
         )
+
+        # 計算該訂單建立時的預估台幣手續費金額
+        if self.spec.side == "buy":
+            est_fee_twd = vol * self.engine.btc_twd_price * Config.FEE_RATE_MAX_TOKEN
+        else:
+            est_fee_twd = self.spec.order_quote_amount * Config.FEE_RATE_MAX_TOKEN
+
         try:
             order = await self.api.place_order(
                 market=self.spec.market,
@@ -592,7 +610,7 @@ class RollingGridLeg:
             slot["order_id"] = oid
             slot["status"] = self.PLACED
             slot["cooldown_until"] = 0.0
-            log.order_success(oid, post_only=True, dry_run=Config.DRY_RUN)
+            log.order_success(oid, post_only=True, dry_run=Config.DRY_RUN, est_fee_twd=est_fee_twd)
             return True
         except Exception as e:
             err = str(e)
@@ -685,6 +703,7 @@ class DualGridEngine:
         self.balance_twd = self.config.DRY_RUN_INITIAL_TWD
         self.frozen_usdt = 0.0
         self.frozen_btc = 0.0
+        self.total_fee_twd = 0.0      # 新增：用於統計已成交訂單的預估累計台幣手續費
 
         self.circuit_breaker_active = False
         self.circuit_breaker_until = 0.0
@@ -882,6 +901,7 @@ class DualGridEngine:
                 f"BTC {self.balance_btc:.6f} (凍結{self.frozen_btc:.6f}) | "
                 f"TWD {self.balance_twd:.0f}"
             )
+        print(f" 📊 累計預估手續費: NT${self.total_fee_twd:.2f} (以 MAX Token 支付金額等值折算)")
         print("-" * 88)
         self._print_leg_table("BTCUSDT 買入", self.buy_leg, buy_t)
         print("-" * 88)
