@@ -38,53 +38,57 @@ if _env_file.exists():
 
 # ==================== 配置 ====================
 class Config:
-    # --- BTCUSDT 買入網格 ---
-    BUY_MARKET = "btcusdt"
-    BUY_TRIGGER_PRICE = 76500.0       # 市價 < 此值時啟動買入網格
-    BUY_GRID_UPPER = 76000.0          # 買單最高價（含）
-    BUY_GRID_LOWER = 68000.0          # 買單最低價（含）
-    BUY_GRID_STEP = 500.0
-    BUY_ORDER_AMOUNT_USDT = 50.0      # 每單花費 USDT（自動換算 BTC 數量）
-    BUY_ACTIVE_ORDERS = 5
+    try:
+        # --- 買入網格 ---
+        BUY_MARKET = os.environ.get("BUY_MARKET", "btcusdt")
+        BUY_GRID_UPPER = float(os.environ["BUY_GRID_UPPER"])
+        BUY_GRID_LOWER = float(os.environ["BUY_GRID_LOWER"])
+        BUY_GRID_STEP = float(os.environ["BUY_GRID_STEP"])
+        BUY_ORDER_AMOUNT_USDT = float(os.environ["BUY_ORDER_AMOUNT_USDT"])
+        BUY_ACTIVE_ORDERS = int(os.environ["BUY_ACTIVE_ORDERS"])
 
-    # --- BTCTWD 賣出網格 ---
-    SELL_MARKET = "btctwd"
-    SELL_TRIGGER_PRICE = 2440000.0    # 市價 > 此值時啟動賣出網格
-    SELL_GRID_LOWER = 2450000.0       # 賣單最低價（含）
-    SELL_GRID_UPPER = 2950000.0       # 賣單最高價（含）
-    SELL_GRID_STEP = 5000.0
-    SELL_ORDER_AMOUNT_TWD = 1200.0    # 每單賣出 TWD 名目（自動換算 BTC 數量）
-    SELL_ACTIVE_ORDERS = 5
+        # --- 賣出網格 ---
+        SELL_MARKET = os.environ.get("SELL_MARKET", "btctwd")
+        SELL_TRIGGER_PRICE = float(os.environ["SELL_TRIGGER_PRICE"])
+        SELL_GRID_LOWER = float(os.environ["SELL_GRID_LOWER"])
+        SELL_GRID_UPPER = float(os.environ["SELL_GRID_UPPER"])
+        SELL_GRID_STEP = float(os.environ["SELL_GRID_STEP"])
+        SELL_ORDER_AMOUNT_TWD = float(os.environ["SELL_ORDER_AMOUNT_TWD"])
+        SELL_ACTIVE_ORDERS = int(os.environ["SELL_ACTIVE_ORDERS"])
 
-    # --- 共用 ---
-    SPIKE_THRESHOLD_USDT = 1000.0
-    CIRCUIT_BREAKER_COOLDOWN = 15
-    POST_ONLY_RETRY_COOLDOWN = 10
-    BAD_DATA_THRESHOLD_PCT = 0.15
-    
-    # 手續費相關設定
-    FEE_BUFFER_PCT = 0.0              # 改為 0.0，因為外扣 MAX Token，不需多鎖定主資產餘額
-    FEE_RATE_MAX_TOKEN = 0.00045      # 0.045% 預估 Maker 手續費率 (使用 MAX Token 支付)
+        # --- 共用 ---
+        SPIKE_THRESHOLD_USDT = float(os.environ.get("SPIKE_THRESHOLD_USDT", 1000.0))
+        CIRCUIT_BREAKER_COOLDOWN = int(os.environ.get("CIRCUIT_BREAKER_COOLDOWN", 15))
+        POST_ONLY_RETRY_COOLDOWN = int(os.environ.get("POST_ONLY_RETRY_COOLDOWN", 10))
+        BAD_DATA_THRESHOLD_PCT = float(os.environ.get("BAD_DATA_THRESHOLD_PCT", 0.15))
+        
+        # 手續費相關設定
+        FEE_BUFFER_PCT = float(os.environ["FEE_BUFFER_PCT"])
+        FEE_RATE_MAX_TOKEN = float(os.environ["FEE_RATE_MAX_TOKEN"])
 
-    API_KEY = os.environ.get("MAX_ACCESS_KEY") or os.environ.get("MAX_API_KEY", "")
-    API_SECRET = os.environ.get("MAX_SECRET_KEY") or os.environ.get("MAX_API_SECRET", "")
+        API_KEY = os.environ.get("MAX_ACCESS_KEY") or os.environ.get("MAX_API_KEY", "")
+        API_SECRET = os.environ.get("MAX_SECRET_KEY") or os.environ.get("MAX_API_SECRET", "")
 
-    DRY_RUN = False
-    DRY_RUN_INITIAL_USDT = 2000.0
-    DRY_RUN_INITIAL_BTC = 0.05
-    DRY_RUN_INITIAL_TWD = 0.0
+        DRY_RUN = os.environ.get("DRY_RUN", "True").lower() == "true"
+        DRY_RUN_INITIAL_USDT = float(os.environ.get("DRY_RUN_INITIAL_USDT", 2000.0))
+        DRY_RUN_INITIAL_BTC = float(os.environ.get("DRY_RUN_INITIAL_BTC", 0.05))
+        DRY_RUN_INITIAL_TWD = float(os.environ.get("DRY_RUN_INITIAL_TWD", 0.0))
 
-    DECIMALS_BTC_USDT_PRICE = 2
-    DECIMALS_BTC_TWD_PRICE = 0
-    DECIMALS_BTC_VOLUME = 4
+        DECIMALS_BTC_USDT_PRICE = int(os.environ.get("DECIMALS_BTC_USDT_PRICE", 2))
+        DECIMALS_BTC_TWD_PRICE = int(os.environ.get("DECIMALS_BTC_TWD_PRICE", 0))
+        DECIMALS_BTC_VOLUME = int(os.environ.get("DECIMALS_BTC_VOLUME", 4))
 
-    # --- 日誌 ---
-    LOG_TO_FILE = True
-    LOG_FILE_NAME = "grid_bot.log"
-    LOG_HISTORY_MAX = 80
-    MA50_ENABLED = True
-    MA50_KLINE_PERIOD = 1440   # 日 K（分鐘）
-    MA50_LENGTH = 50
+        # --- 日誌 ---
+        LOG_TO_FILE = os.environ.get("LOG_TO_FILE", "True").lower() == "true"
+        LOG_FILE_NAME = os.environ.get("LOG_FILE_NAME", "grid_bot.log")
+        LOG_HISTORY_MAX = int(os.environ.get("LOG_HISTORY_MAX", 80))
+        MA50_ENABLED = os.environ.get("MA50_ENABLED", "True").lower() == "true"
+        MA50_KLINE_PERIOD = int(os.environ.get("MA50_KLINE_PERIOD", 1440))
+        MA50_LENGTH = int(os.environ.get("MA50_LENGTH", 50))
+        
+    except KeyError as e:
+        print(f"❌ .env 設定錯誤：缺少必要參數 {e}")
+        sys.exit(1)
 
 
 def _json_compact(obj: Dict[str, Any]) -> str:
@@ -265,7 +269,16 @@ class MaxExchangeClient:
             raise ValueError("交易數量 <= 0")
 
         formatted_price = f"{price:.{decimals_price}f}"
-        formatted_volume = f"{volume:.{Config.DECIMALS_BTC_VOLUME}f}"
+        
+        # 預估手續費 (0.045%)
+        fee_rate = 0.00045
+        if side.lower() == "buy":
+            # 買單：減少 BTC 數量（BTC = USDT / Price * (1 - fee)）
+            actual_volume = volume * (1 - fee_rate)
+            formatted_volume = f"{actual_volume:.{Config.DECIMALS_BTC_VOLUME}f}"
+        else:
+            # 賣單：體積不變，因為手續費是扣除 TWD (Quote)
+            formatted_volume = f"{volume:.{Config.DECIMALS_BTC_VOLUME}f}"
 
         if self.dry_run:
             if post_only and side == "buy" and current_market_price > 0 and price >= current_market_price:
@@ -405,7 +418,12 @@ class RollingGridLeg:
 
     def is_triggered(self) -> bool:
         m = self.market_price
-        t = self.spec.trigger_price
+        # 替換邏輯：買入使用 GridUpper + Step，賣出使用 GridLower - Step
+        if self.spec.side == "buy":
+            t = self.engine.config.BUY_GRID_UPPER + self.engine.config.BUY_GRID_STEP
+        else:
+            t = self.engine.config.SELL_GRID_LOWER - self.engine.config.SELL_GRID_STEP
+            
         if self.spec.trigger_above:
             return m > t
         return m < t
@@ -666,7 +684,7 @@ class DualGridEngine:
                 step=self.config.BUY_GRID_STEP,
                 order_quote_amount=self.config.BUY_ORDER_AMOUNT_USDT,
                 quote_currency="usdt",
-                trigger_price=self.config.BUY_TRIGGER_PRICE,
+                 trigger_price=self.config.BUY_GRID_UPPER + self.config.BUY_GRID_STEP,
                 trigger_above=False,
                 active_orders=self.config.BUY_ACTIVE_ORDERS,
                 price_decimals=self.config.DECIMALS_BTC_USDT_PRICE,
@@ -697,6 +715,10 @@ class DualGridEngine:
         self.btc_usdt_price = 0.0
         self.last_btc_usdt_price = 0.0
         self.btc_twd_price = 0.0
+        self.current_ma50 = 0.0
+        self.current_ma50_price = 0.0
+        self.current_ma50_twd = 0.0
+        self.current_ma50_twd_price = 0.0
 
         self.balance_usdt = self.config.DRY_RUN_INITIAL_USDT
         self.balance_btc = self.config.DRY_RUN_INITIAL_BTC
@@ -722,7 +744,7 @@ class DualGridEngine:
             f" ~ {fmt_usd(self.config.BUY_GRID_UPPER, 0)}，"
             f"步長 {fmt_usd(self.config.BUY_GRID_STEP, 0)}，"
             f"每單 {fmt_usd(self.config.BUY_ORDER_AMOUNT_USDT)}，"
-            f"BUY_TRIGGER {fmt_usd(self.config.BUY_TRIGGER_PRICE, 0)}"
+            f"BUY_TRIGGER {fmt_usd(self.config.BUY_GRID_UPPER + self.config.BUY_GRID_STEP, 0)}"
         )
         self.logger.info(
             f"BTCTWD 賣出網格: {fmt_twd(self.config.SELL_GRID_LOWER)}"
@@ -734,33 +756,39 @@ class DualGridEngine:
         if self.config.LOG_TO_FILE:
             self.logger.info(f"日誌寫入: {log_path}")
 
-    async def _log_ma50_context(self, market_price: float) -> None:
-        if not self.config.MA50_ENABLED or self._ma50_logged:
-            return
+    async def _log_ma50_context(self, market_price: float, market: str) -> tuple[float, float]:
+        if not self.config.MA50_ENABLED:
+            return 0.0, 0.0
         klines = await self.api.get_klines(
-            self.config.BUY_MARKET,
+            market,
             period=self.config.MA50_KLINE_PERIOD,
             limit=self.config.MA50_LENGTH,
         )
         if len(klines) < self.config.MA50_LENGTH:
-            self.logger.warn(
-                f"[MA50對齊偵測] K 線資料不足 ({len(klines)}/{self.config.MA50_LENGTH})，略過"
-            )
-            return
+            # 僅在主交易對 (BTCUSDT) 資料不足時發出警告，避免重複警示
+            if market == self.config.BUY_MARKET:
+                self.logger.warn(
+                    f"[MA50對齊偵測] {market} K 線資料不足，略過"
+                )
+            return 0.0, 0.0
         closes = [float(k[4]) for k in klines[-self.config.MA50_LENGTH :]]
         ma50 = sum(closes) / len(closes)
-        diff_pct = (market_price - ma50) / ma50 * 100 if ma50 else 0.0
-        if market_price < ma50:
-            rel = f"低於均線 {abs(diff_pct):.2f}%"
-        elif market_price > ma50:
-            rel = f"高於均線 {diff_pct:.2f}%"
-        else:
-            rel = "貼近均線"
-        self.logger.info(
-            f"[MA50對齊偵測] 當前 50 日均線位於 {fmt_usd(ma50, 0)}，"
-            f"現價 {fmt_usd(market_price)}（{rel}）"
-        )
-        self._ma50_logged = True
+        
+        # 我們為每個市場追蹤一個 MA50 狀態，這裡簡化處理：
+        # 如果是首次偵測，記錄日誌
+        if not hasattr(self, "_ma50_logged_markets"):
+            self._ma50_logged_markets = set()
+            
+        if market not in self._ma50_logged_markets:
+            diff_pct = (market_price - ma50) / ma50 * 100 if ma50 else 0.0
+            rel = f"{diff_pct:+.2f}%"
+            self.logger.info(
+                f"[MA50對齊偵測] {market.upper()} 50MA: {fmt_usd(ma50, 0)}，"
+                f"現價 {fmt_usd(market_price)} ({rel})"
+            )
+            self._ma50_logged_markets.add(market)
+            
+        return market_price, ma50
 
     async def get_balances(self) -> Dict[str, float]:
         if self.config.DRY_RUN:
@@ -803,6 +831,11 @@ class DualGridEngine:
                 self.last_btc_usdt_price = self.btc_usdt_price or usdt_p
                 self.btc_usdt_price = usdt_p
                 self.btc_twd_price = twd_p
+                
+                # 更新 MA50 數據
+                self.current_ma50_price, self.current_ma50 = await self._log_ma50_context(usdt_p, self.config.BUY_MARKET)
+                self.current_ma50_twd, self.current_ma50_twd_price = await self._log_ma50_context(twd_p, self.config.SELL_MARKET)
+                
                 self.buy_leg.market_price = usdt_p
                 self.sell_leg.market_price = twd_p
 
@@ -817,11 +850,12 @@ class DualGridEngine:
 
                 if not self.buy_leg.activated and self.buy_leg.is_triggered():
                     self.buy_leg.activated = True
+                    buy_trigger = self.config.BUY_GRID_UPPER + self.config.BUY_GRID_STEP
                     self.logger.info(
-                        f"價格低於 BUY_TRIGGER_PRICE ({fmt_usd(self.config.BUY_TRIGGER_PRICE, 0)})，"
+                        f"價格低於 BUY_TRIGGER_PRICE ({fmt_usd(buy_trigger, 0)})，"
                         f"當前 {fmt_usd(usdt_p)}，啟動買入網格調度..."
                     )
-                    await self._log_ma50_context(usdt_p)
+                    await self._log_ma50_context(usdt_p, self.config.BUY_MARKET)
                     targets = self.buy_leg.compute_target_prices()
                     if targets:
                         px_list = ", ".join(fmt_usd(p, 0) for p in targets)
@@ -829,8 +863,9 @@ class DualGridEngine:
 
                 if not self.sell_leg.activated and self.sell_leg.is_triggered():
                     self.sell_leg.activated = True
+                    sell_trigger = self.config.SELL_GRID_LOWER - self.config.SELL_GRID_STEP
                     self.logger.info(
-                        f"價格高於 SELL_TRIGGER_PRICE ({fmt_twd(self.config.SELL_TRIGGER_PRICE)})，"
+                        f"價格高於 SELL_TRIGGER_PRICE ({fmt_twd(sell_trigger)})，"
                         f"當前 {fmt_twd(twd_p)}，啟動賣出網格調度..."
                     )
                     targets = self.sell_leg.compute_target_prices()
@@ -876,9 +911,14 @@ class DualGridEngine:
         print(f" {status} | {mode}")
         print(
             f" BTCUSDT {self.btc_usdt_price:.2f} ({sec_s}) "
-            f"觸發<{self.config.BUY_TRIGGER_PRICE:.0f} | "
-            f"BTCTWD {self.btc_twd_price:.0f} 觸發>{self.config.SELL_TRIGGER_PRICE:.0f}"
+            f"觸發<{self.config.BUY_GRID_UPPER + self.config.BUY_GRID_STEP:.0f} | "
+            f"BTCTWD {self.btc_twd_price:.0f} 觸發>{self.config.SELL_GRID_LOWER - self.config.SELL_GRID_STEP:.0f}"
         )
+        if self.config.MA50_ENABLED:
+            if self.current_ma50 > 0:
+                print(f" BTCUSDT 50MA: {self.current_ma50:.0f} | 現價: {self.current_ma50_price:.2f}")
+            if self.current_ma50_twd > 0:
+                print(f" BTCTWD  50MA: {self.current_ma50_twd:.0f} | 現價: {self.current_ma50_twd_price:.0f}")
         print("-" * 88)
         buy_t = self.buy_leg.compute_target_prices()
         sell_t = self.sell_leg.compute_target_prices()
