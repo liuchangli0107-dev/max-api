@@ -144,12 +144,13 @@ class GridLogger:
     def error(self, msg: str) -> None:
         self._emit(f"[ERROR] {msg}")
 
-    def api_submit(self, side: str, market: str, price: float, volume: float, decimals: int) -> None:
+    def api_submit(self, side: str, market: str, price: float, volume: float, decimals: int, usdt_twd_price: float = 0.0) -> None:
         side_u = side.upper()
         mkt = market.upper()
         px = fmt_price_for_market(price, market, decimals)
+        twd_info = f" (USDTTWD: {usdt_twd_price:.2f})" if usdt_twd_price > 0 else ""
         self._emit(
-            f"🚀 [API] 送出掛單: {side_u} {mkt} - 價格: {px}，數量: {fmt_btc(volume)} BTC"
+            f"🚀 [API] 送出掛單: {side_u} {mkt} - 價格: {px}，數量: {fmt_btc(volume)} BTC{twd_info}"
         )
 
     def order_success(self, order_id: int, post_only: bool = True, dry_run: bool = False, est_fee_twd: float = 0.0) -> None:
@@ -603,8 +604,12 @@ class RollingGridLeg:
         price = slot["price"]
         vol = slot["volume"]
         log = self.engine.logger
+        usdt_twd = 0.0
+        if self.engine.btc_usdt_price > 0:
+            usdt_twd = self.engine.btc_twd_price / self.engine.btc_usdt_price
+
         log.api_submit(
-            self.spec.side, self.spec.market, price, vol, self.spec.price_decimals
+            self.spec.side, self.spec.market, price, vol, self.spec.price_decimals, usdt_twd_price=usdt_twd
         )
 
         # 計算該訂單建立時的預估台幣手續費金額
