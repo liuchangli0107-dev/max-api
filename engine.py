@@ -39,6 +39,7 @@ async def send_telegram_notification(msg: str):
         except Exception:
             pass
 
+
 class Config:
     """
     負責載入與解析環境變數（.env 或系統環境變數），並將其實例化為全域配置物件，確保網格參數、API 金鑰及日誌路徑正確載入。
@@ -46,7 +47,7 @@ class Config:
         - 網格核心參數：統一以 USDT 為計價基準，簡化跨市場（USDT/TWD）操作邏輯。
         - 交易安全機制：包含價格尖峰偵測、迴路保護、Post-Only 重試冷卻及異常數據閾值設定，提升交易穩定性與安全性。
     """
-    
+
     _env_file = Path(__file__).parent / ".env"
     if _env_file.exists():
         with open(_env_file) as f:
@@ -100,7 +101,7 @@ class Config:
 
         # 手續費相關設定
         FEE_BUFFER_PCT = float(os.environ.get("FEE_BUFFER_PCT", 0.0))
-        FEE_RATE = float(os.environ.get("FEE_RATE", 0.00045))
+        FEE_RATE_MAX_TOKEN = float(os.environ.get("FEE_RATE_MAX_TOKEN", 0.00045))
 
         API_KEY = os.environ.get("MAX_ACCESS_KEY") or os.environ.get("MAX_API_KEY", "")
         API_SECRET = os.environ.get("MAX_SECRET_KEY") or os.environ.get(
@@ -108,8 +109,8 @@ class Config:
         )
 
         DECIMALS_BTC_USDT_PRICE = int(os.environ.get("DECIMALS_BTC_USDT_PRICE", 2))
-        DECIMALS_BTC_TWD_PRICE = int(os.environ.get("DECIMALS_BTC_TWD_PRICE", 0))
-        DECIMALS_BTC_VOLUME = int(os.environ.get("DECIMALS_BTC_VOLUME", 4))
+        DECIMALS_BTC_TWD_PRICE = int(os.environ.get("DECIMALS_BTC_TWD_PRICE", 1))
+        DECIMALS_BTC_VOLUME = int(os.environ.get("DECIMALS_BTC_VOLUME", 6))
 
         # --- 日誌 ---
         LOG_TO_FILE = os.environ.get("LOG_TO_FILE", "True").lower() == "true"
@@ -156,7 +157,7 @@ def fmt_usd(price: float, decimals: int = 2) -> str:
     return f"${price:,.{decimals}f}"
 
 
-def fmt_twd(price: float, decimals: int = 0) -> str:
+def fmt_twd(price: float, decimals: int = 1) -> str:
     return f"NT${price:,.{decimals}f}"
 
 
@@ -181,7 +182,7 @@ class GridDatabaseService:
         - 網格狀態表：以複合主鍵 (market, side, price) 確保每個價格點只有一筆狀態記錄，防止重疊買賣。
         - 市場快照表：記錄下單/成交當下的完整市場生態環境。
     """
-    
+
     def __init__(self, db_file: str = "grid_state.db"):
         self.db_file = db_file
         self._init_db()
@@ -336,8 +337,8 @@ class GridDatabaseService:
 
         # 動態計算即時匯率
         usdt_twd = 0.0
-        if engine.btc_usdt_price > 0:
-            usdt_twd = engine.btc_twd_price / engine.btc_usdt_price
+        if engine.usdt_twd_price > 0:
+            usdt_twd = engine.usdt_twd_price / engine.usdt_twd_price
 
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
@@ -366,7 +367,6 @@ class GridDatabaseService:
             conn.commit()
 
 
-
 class GridLogger:
     """
     整合終端機 UI 歷史紀錄與檔案日誌（File Logger），針對 API 互動（下單、成交、撤單）提供結構化的日誌輸出，並支援日誌自動輪轉以保護硬碟。
@@ -374,9 +374,9 @@ class GridLogger:
         - file_logger: 實體檔案日誌記錄器，使用自訂的 TimedSizeRotatingFileHandler 實現每日輪轉與大小限制。
         - _emit: 核心輸出函數，統一處理歷史紀錄更新與檔案寫入，確保 API 交易相關事件（下單、成交、撤單）都能被清晰記錄並在終端機與檔案中同步反映。
         - info/warn/error: 一般日誌輸出接口，支援不同層級的訊息分類。
-        - api_submit/order_success/order_cancel/order_filled: 專門針對 API 交易事件的結構化日誌方法，提供統一格式化輸出並包含關鍵交易資訊（價格、數量、市價比較、預估手續費等）。   
+        - api_submit/order_success/order_cancel/order_filled: 專門針對 API 交易事件的結構化日誌方法，提供統一格式化輸出並包含關鍵交易資訊（價格、數量、市價比較、預估手續費等）。
     """
-    
+
     def __init__(self, max_history: int = 5):
         # 供終端機儀表板顯示的近期日誌
         self.history = []
@@ -483,7 +483,7 @@ class MaxExchangeClient:
         - get_spot_balances: 查詢現貨帳戶餘額，並自動扣除鎖定中的資金，提供可用餘額資訊。
         - place_order: 下單方法，支援市價單與限價單，並根據交易方向自動計算實際成交量（考慮手續費），同時提供 post-only 選項以確保 Maker 訂單不被吃掉。
     """
-    
+
     def __init__(
         self, api_key: str, api_secret: str, dry_run: bool, engine: Any = None
     ):
@@ -530,7 +530,9 @@ class MaxExchangeClient:
         url = f"{self.base_url}/api/v3/tickers"
         params = [("markets[]", m.lower()) for m in markets]
         try:
-            r = await self.client.get(url, params=params)
+            r = await self.client.get(
+                url, params=params, headers={"User-Agent": "Mozilla/5.0"}
+            )
             if r.status_code == 200:
                 return {t["market"]: float(t.get("last", 0.0)) for t in r.json()}
             elif r.status_code == 503:
@@ -538,6 +540,10 @@ class MaxExchangeClient:
                     "交易所維護中 (503 Service Unavailable)，暫停監控..."
                 )
                 await asyncio.sleep(60)
+            else:
+                # 修正：使用 r.json() 或 r.text 記錄錯誤
+                self.engine.logger.error(f"獲取失敗: {r.status_code} - {r.text}")
+
         except Exception as e:
             self.engine.logger.error(f"獲取市場 Tickers 失敗: {e}")
         return {}
@@ -597,10 +603,9 @@ class MaxExchangeClient:
         formatted_price = f"{price:.{decimals_price}f}"
 
         # 預估手續費 (0.045%)
-        fee_rate = 0.00045
         if side.lower() == "buy":
             # 買單：減少 BTC 數量（BTC = USDT / Price * (1 - fee)）
-            actual_volume = volume * (1 - fee_rate)
+            actual_volume = volume * (1 - Config.FEE_RATE_MAX_TOKEN)
             formatted_volume = f"{actual_volume:.{Config.DECIMALS_BTC_VOLUME}f}"
         else:
             # 賣單：體積不變，因為手續費是扣除 TWD (Quote)
@@ -686,6 +691,7 @@ class GridLegSpec:
     active_orders: int
     price_decimals: int
 
+
 class RollingGridLeg:
     """
     實作單邊滾動網格的邏輯核心，負責計算目標價格區間、監控掛單狀態及執行價格滾動策略。
@@ -693,7 +699,7 @@ class RollingGridLeg:
         - 目標價格計算：根據當前市場價格與設定的網格參數，動態計算應該放置掛單的價格區間。
         - 觸發條件判定：判斷當前市場價格是否觸及網格區間，決定是否需要執行滾動策略。
     """
-    
+
     IDLE = "IDLE"
     PLACED = "PLACED"
     REJECTED_COOLDOWN = "REJECTED_COOLDOWN"
@@ -707,13 +713,6 @@ class RollingGridLeg:
         self.engine = engine
         self.market_price = 0.0
         self.activated = False
-
-        # 優先自 SQLite 資料庫讀取歷史狀態，如果沒有才會在後續動態生成
-        # self.db_service = GridDatabaseService(Config.DB_FILE)
-        # self.slots_by_price = self.db_service.load_saved_slots(
-        #     self.spec.market, self.spec.side
-        # )
-        
         self.db_service = GridDatabaseService(Config.DB_FILE)
         self.slots_by_price = {}
         self._validate()
@@ -771,7 +770,7 @@ class RollingGridLeg:
     def _candidate_prices(self) -> List[float]:
         """所有網格的計算基準，強制錨定 BTC/USDT 價格，防止跨幣種匯差失真"""
 
-        # 💡 核心修正：不論是買方(USDT)還是賣方(TWD)，一律看 USDT 的市價與步長來判定區間
+        # 不論是買方(USDT)還是賣方(TWD)，一律看 USDT 的市價與步長來判定區間
         base_market_price = self.engine.btc_usdt_price
         if base_market_price <= 0:
             return []
@@ -847,7 +846,9 @@ class RollingGridLeg:
 
     def _on_cancel_place(self, slot: Dict[str, Any]):
         if not Config.DRY_RUN:
-            self.engine.logger.info(f"🚨 [撤單] 正在撤銷訂單 ID: {slot['order_id']}, 價位: {slot['price']}, side: {self.spec.side}")
+            self.engine.logger.info(
+                f"🚨 [撤單] 正在撤銷訂單 ID: {slot['order_id']}, 價位: {slot['price']}, side: {self.spec.side}"
+            )
             return
         if self.spec.side == "buy":
             self.engine.frozen_usdt = max(
@@ -901,7 +902,7 @@ class RollingGridLeg:
                 if self.engine.btc_usdt_price > 0
                 else 0
             )
-            fee_rate = getattr(self.engine.config, "FEE_RATE", 0.00045)
+            fee_rate = getattr(self.engine.config, "FEE_RATE_MAX_TOKEN", 0.00045)
 
             if self.spec.side == "buy":
                 est_fee_twd = slot["volume"] * self.engine.btc_twd_price * fee_rate
@@ -946,6 +947,62 @@ class RollingGridLeg:
         except Exception:
             return False
 
+    def update_simulated_wallet(
+        self, slot: Dict[str, Any], price: float, side: str
+    ):
+        self.engine.logger.warn(
+            f"模擬錢包變動前: price={price}, side={side}, volume={slot['volume']}"
+        )
+        if not Config.DRY_RUN:
+            return
+        self.engine.logger.warn(
+            f"模擬錢包變動前: USDT={self.engine.balance_usdt:.2f}, BTC={self.engine.balance_btc:.6f}, TWD={self.engine.balance_twd:.2f}, MAX={self.engine.balance_max:.6f}"
+        )
+        if side == "buy":
+            cost = price * slot["volume"]
+            fee = cost * Config.FEE_RATE_MAX_TOKEN  # 手續費
+            # 買入：扣 USDT (或 TWD)，加 BTC
+            if Config.BUY_MARKET.lower() == "btctwd":
+                self.engine.balance_twd -= cost
+                fee_max = (
+                    fee * self.engine.max_twd_price
+                    if self.engine.max_twd_price > 0
+                    else 0
+                )
+            else:
+                self.engine.balance_usdt -= cost
+                fee_max = (
+                    fee * self.engine.max_usdt_price
+                    if self.engine.max_usdt_price > 0
+                    else 0
+                )
+            self.engine.balance_btc += slot["volume"]
+        else:
+            # 賣出：減 BTC，加 USDT (或 TWD)
+            revenue = price * slot["volume"]
+            fee = revenue * Config.FEE_RATE_MAX_TOKEN  # 手續費
+            if Config.SELL_MARKET.lower() == "btctwd":
+                self.engine.balance_twd += revenue
+                fee_max = (
+                    fee * self.engine.max_twd_price
+                    if self.engine.max_twd_price > 0
+                    else 0
+                )
+            else:
+                self.engine.balance_usdt += revenue
+                fee_max = (
+                    fee * self.engine.max_usdt_price
+                    if self.engine.max_usdt_price > 0
+                    else 0
+                )
+            self.engine.balance_btc -= slot["volume"]
+        self.engine.balance_max -= fee_max  # 以最大價換算的手續費預留
+
+        # 隨後將最新餘額寫入 DB 或印在 Console
+        self.engine.logger.warn(
+            f"模擬錢包變動後: USDT={self.engine.balance_usdt:.2f}, BTC={self.engine.balance_btc:.6f}, TWD={self.engine.balance_twd:.2f}, MAX={self.engine.balance_max:.6f}"
+        )
+
     async def sync_orders(self):
         now = time.time()
 
@@ -967,6 +1024,34 @@ class RollingGridLeg:
             if slot["price"] in target_set:
                 continue
 
+            if Config.DRY_RUN:
+                # 判斷成交條件
+                if self.spec.side == "buy":
+                    current_price = (
+                        self.engine.btc_usdt_price
+                        if Config.BUY_MARKET == "btcusdt"
+                        else self.engine.btc_twd_price
+                    )
+                    if current_price <= slot["price"]:
+                        self.engine.logger.warn(
+                            f"成交條件 {self.spec.side.upper()} @ {slot['price']} 已觸及 (市價: {current_price})，模擬成交中..."
+                        )
+                        slot["status"] = "filled"
+                        self.update_simulated_wallet(slot, current_price, side="buy")
+
+                if self.spec.side == "sell":
+                    current_price = (
+                        self.engine.btc_usdt_price
+                        if Config.SELL_MARKET == "btcusdt"
+                        else self.engine.btc_twd_price
+                    )
+                    if current_price >= slot["price"]:
+                        self.engine.logger.warn(
+                            f"成交條件 {self.spec.side.upper()} @ {slot['price']} 已觸及 (市價: {current_price})，模擬成交中..."
+                        )
+                        slot["status"] = "filled"
+                        self.update_simulated_wallet(slot, current_price, side="sell")
+
             oid = slot["order_id"]
             if oid:
                 try:
@@ -974,7 +1059,9 @@ class RollingGridLeg:
                     self.db_service.record_market_snapshot(
                         "CANCEL", self.spec, slot, self.engine
                     )
-                    self.engine.logger.info(f"🚨 [滾動撤單] 正在撤銷訂單 ID: {oid}, 價位: {slot['price']}")
+                    self.engine.logger.info(
+                        f"🚨 [滾動撤單] 正在撤銷訂單 ID: {oid}, 價位: {slot['price']}"
+                    )
                     await self.api.cancel_order(oid)
                     self._on_cancel_place(slot)
                     self.engine.logger.order_cancel(
@@ -999,7 +1086,7 @@ class RollingGridLeg:
         # ⛔️ 攔截點：掃蕩完舊單後，如果網格根本還沒啟動 (OFF)，就不准往下掛新單！
         # ------------------------------------------------------------
         if not self.activated:
-            # 🔌 SQLite 優化：在 sync_orders 結束時，將所有變動狀態一次性批次寫入
+            # 在 sync_orders 結束時，將所有變動狀態一次性批次寫入
             self.db_service.sync_all_slots(
                 self.spec.market, self.spec.side, self.slots_by_price
             )
@@ -1072,12 +1159,12 @@ class RollingGridLeg:
 
         # 💡 修正：計算該訂單建立時的預估台幣手續費金額
         if self.spec.side == "buy":
-            est_fee_twd = vol * self.engine.btc_twd_price * self.engine.config.FEE_RATE
+            est_fee_twd = vol * self.engine.btc_twd_price * self.engine.config.FEE_RATE_MAX_TOKEN
         else:
             # 賣單的名目是 50 USDT，必須先乘上即時匯率轉成台幣，再算手續費
             est_fee_twd = (
                 self.spec.order_quote_amount * usdt_twd
-            ) * self.engine.config.FEE_RATE
+            ) * self.engine.config.FEE_RATE_MAX_TOKEN
 
         try:
             order = await self.api.place_order(
@@ -1161,6 +1248,7 @@ class RollingGridLeg:
             slot["status"] = self.IDLE
             slot["order_id"] = None
 
+
 class DualGridEngine:
     """
     機器人的主引擎（Main Engine），負責協調買賣雙邊（Buy/Sell Leg）、處理市場數據更新、執行儀表板渲染及控制自動化交易的運行循環（Run Loop）。
@@ -1174,7 +1262,7 @@ class DualGridEngine:
         - 配置驗證與啟動檢查：在啟動階段對配置參數進行全面檢查，確保所有設定合理且不會導致策略失效或資金風險，只有通過檢查後才允許機器人正式運行。
         - 整合 SQLite 資料
     """
-    
+
     def __init__(self):
         self.config = Config()
         self.api = MaxExchangeClient(
@@ -1183,6 +1271,8 @@ class DualGridEngine:
             self.config.DRY_RUN,
             engine=self,
         )
+        
+        self.start_time = time.time()
 
         # 初始化買方網格
         self.buy_leg = RollingGridLeg(
@@ -1239,6 +1329,7 @@ class DualGridEngine:
         self.balance_usdt = getattr(self.config, "DRY_RUN_INITIAL_USDT", 0.0)
         self.balance_btc = getattr(self.config, "DRY_RUN_INITIAL_BTC", 0.0)
         self.balance_twd = getattr(self.config, "DRY_RUN_INITIAL_TWD", 0.0)
+        self.balance_max = 0.0
         self.frozen_usdt = 0.0
         self.frozen_btc = 0.0
         self.total_fee_twd = 0.0  # 用於統計已成交訂單的預估累計台幣手續費
@@ -1250,6 +1341,7 @@ class DualGridEngine:
         # 💡 使用新版且乾淨的 Logger 實例化
         self.logger = GridLogger(max_history=5)
         self._ma50_logged = False
+        self.initial_balances = {}
 
         self._validate_startup_config()
 
@@ -1297,8 +1389,8 @@ class DualGridEngine:
             errors.append("SELL_ACTIVE_ORDERS 必須 > 0")
         if getattr(c, "FEE_BUFFER_PCT", 0) < 0:
             errors.append("FEE_BUFFER_PCT 不可為負數")
-        if getattr(c, "FEE_RATE", 0) < 0:
-            errors.append("FEE_RATE 不可為負數")
+        if getattr(c, "FEE_RATE_MAX_TOKEN", 0) < 0:
+            errors.append("FEE_RATE_MAX_TOKEN 不可為負數")
 
         buy_levels = _levels(
             c.BUY_GRID_LOWER, c.BUY_GRID_UPPER, getattr(c, "GRID_STEP", 1)
@@ -1316,21 +1408,15 @@ class DualGridEngine:
             )
 
         # ---- 實盤安全檢查 ----
-        if not c.DRY_RUN:
-            if not getattr(c, "API_KEY", "") or not getattr(c, "API_SECRET", ""):
-                errors.append("實盤模式需要設定 API_KEY / API_SECRET")
-            if (
-                getattr(c, "BUY_MARKET", "").lower()
-                == getattr(c, "SELL_MARKET", "").lower()
-            ):
-                warns.append(
-                    "BUY_MARKET 與 SELL_MARKET 相同，將在同一市場同時掛買/賣，請確認策略意圖"
-                )
-        else:
-            if getattr(c, "DRY_RUN_INITIAL_USDT", 0) <= 0:
-                warns.append("DRY_RUN_INITIAL_USDT <= 0，買網格可能無法掛單")
-            if getattr(c, "DRY_RUN_INITIAL_BTC", 0) <= 0:
-                warns.append("DRY_RUN_INITIAL_BTC <= 0，賣網格可能無法掛單")
+        if not getattr(c, "API_KEY", "") or not getattr(c, "API_SECRET", ""):
+            errors.append("實盤模式需要設定 API_KEY / API_SECRET")
+        if (
+            getattr(c, "BUY_MARKET", "").lower()
+            == getattr(c, "SELL_MARKET", "").lower()
+        ):
+            warns.append(
+                "BUY_MARKET 與 SELL_MARKET 相同，將在同一市場同時掛買/賣，請確認策略意圖"
+            )
 
         # ---- 輸出摘要 ----
         if warns:
@@ -1383,23 +1469,46 @@ class DualGridEngine:
 
     async def get_balances(self) -> Dict[str, float]:
         if self.config.DRY_RUN:
+            if (
+                self.balance_usdt <= 0
+                and self.balance_btc <= 0
+                and self.balance_twd <= 0
+            ):
+                balance_info = await self.api.get_spot_balances()
+                self.balance_usdt = balance_info.get("usdt", 0.0)
+                self.balance_btc = balance_info.get("btc", 0.0)
+                self.balance_twd = balance_info.get("twd", 0.0)
+                self.balance_max = balance_info.get("max", 0.0)
             return {
                 "usdt": self.balance_usdt,
                 "btc": self.balance_btc,
                 "twd": self.balance_twd,
+                "max": self.balance_max,
             }
         return await self.api.get_spot_balances()
 
     async def run_loop(self):
         self.logger.info("開始監控 BTCUSDT / BTCTWD 行情與網格調度...")
+        self.initial_balances = await self.get_balances()
+        self.logger.info(f"初始資金記錄完成: {self.initial_balances}")
         while self.is_running:
             try:
                 tickers = await self.api.get_tickers_batch(
-                    [self.config.BUY_MARKET, self.config.SELL_MARKET]
+                    [
+                        self.config.BUY_MARKET,
+                        self.config.SELL_MARKET,
+                        "maxtwd",
+                        "maxusdt",
+                        "usdttwd",
+                    ]
                 )
                 usdt_p = tickers.get(self.config.BUY_MARKET, 0.0)
                 twd_p = tickers.get(self.config.SELL_MARKET, 0.0)
+                max_twd_p = tickers.get("maxtwd", 0.0)
+                max_usdt_p = tickers.get("maxusdt", 0.0)
+                usdt_twd_p = tickers.get("usdttwd", 0.0)
                 if not usdt_p or not twd_p:
+                    self.logger.error("無法獲取必要的市場價格，略過本輪更新")
                     await asyncio.sleep(1.0)
                     continue
 
@@ -1429,6 +1538,9 @@ class DualGridEngine:
                 self.last_btc_usdt_price = self.btc_usdt_price or usdt_p
                 self.btc_usdt_price = usdt_p
                 self.btc_twd_price = twd_p
+                self.max_twd_price = max_twd_p
+                self.max_usdt_price = max_usdt_p
+                self.usdt_twd_price = usdt_twd_p
 
                 # 更新 MA50 數據
                 self.current_ma50_price, self.current_ma50 = (
@@ -1438,7 +1550,7 @@ class DualGridEngine:
                     await self._log_ma50_context(twd_p, self.config.SELL_MARKET)
                 )
 
-                # 💡 核心修正：因為網格上下限與觸發價皆已統一為 USDT，所以雙邊都必須餵入 usdt_p 來做比較！
+                # 因為網格上下限與觸發價皆已統一為 USDT，所以雙邊都必須餵入 usdt_p 來做比較！
                 self.buy_leg.market_price = usdt_p
                 self.sell_leg.market_price = usdt_p
 
@@ -1479,6 +1591,7 @@ class DualGridEngine:
                 await asyncio.sleep(1.0)
 
             except asyncio.CancelledError:
+                self.logger.info("主循環已停止")
                 break
             except Exception as e:
                 self.logger.error(f"主循環異常: {e}")
@@ -1489,6 +1602,10 @@ class DualGridEngine:
             os.system("cls" if os.name == "nt" else "clear")
             mode = "🧪 模擬" if getattr(self.config, "DRY_RUN", True) else "🔴 實盤"
             now = time.time()
+            elapsed_seconds = int(now - self.start_time)
+            hours, remainder = divmod(elapsed_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            uptime_str = f"⏱️ 運行時間: {hours:02d}:{minutes:02d}:{seconds:02d}"
 
             if self.circuit_breaker_active and now < self.circuit_breaker_until:
                 status = f"🚨 熔斷 ({self.circuit_breaker_until - now:.0f}s)"
@@ -1511,30 +1628,23 @@ class DualGridEngine:
             buy_mkt = getattr(self.config, "BUY_MARKET", "btcusdt").upper()
             sell_mkt = getattr(self.config, "SELL_MARKET", "btctwd").upper()
 
-            # 計算有效匯率
-            usdt_twd_rate = (
-                self.btc_twd_price / self.btc_usdt_price
-                if (self.btc_usdt_price > 0 and sell_mkt.endswith("TWD"))
-                else 0
-            )
-
             print("=" * 88)
             print(f"   MAX 雙邊滾動網格（{buy_mkt} 買 / {sell_mkt} 賣）")
             print("=" * 88)
-            print(f" {status} | {mode}")
-            print(
-                f" {buy_mkt} {self.btc_usdt_price:.2f} ({sec_s}) | {sell_mkt} {self.btc_twd_price:.0f}"
-            )
-
+            print(f" {status} | {mode} | {uptime_str}")
             if getattr(self.config, "MA50_ENABLED", False):
                 if self.current_ma50 > 0:
                     print(
-                        f" {buy_mkt} 50MA: {self.current_ma50:.0f} | 現價: {self.current_ma50_price:.2f}"
+                        f" {buy_mkt} 50MA: {self.current_ma50:.2f} | 現價: {self.btc_usdt_price:.2f}"
                     )
                 if self.current_ma50_twd > 0:
                     print(
-                        f" {sell_mkt}  50MA: {self.current_ma50_twd:.0f} | 現價: {self.current_ma50_twd_price:.0f}"
+                        f" {sell_mkt}  50MA: {self.current_ma50_twd:.1f} | 現價: {self.btc_twd_price:.1f}"
                     )
+            else:
+                print(
+                    f" {buy_mkt} {self.btc_usdt_price:.2f} ({sec_s}) | {sell_mkt} {self.btc_twd_price:.0f}"
+                )
             print("-" * 88)
 
             buy_t = self.buy_leg.compute_target_prices()
@@ -1560,22 +1670,20 @@ class DualGridEngine:
                 print(
                     f" [賣] 區間 {s_lower:.0f}~{s_upper:.0f} 步長{step:.0f} 每單{s_amt:.0f}U"
                 )
-                if is_twd_market and usdt_twd_rate > 0:
+                if is_twd_market and self.usdt_twd_price > 0:
                     targets_str = ", ".join(
-                        f"{p:.0f}U(約{p * usdt_twd_rate:.0f}TWD)" for p in sell_t
+                        f"{p:.0f}U(約{p * self.usdt_twd_price:.0f}TWD)" for p in sell_t
                     )
                 else:
                     targets_str = ", ".join(f"{p:.0f}U" for p in sell_t)
                 print(f"      目標: {targets_str}")
 
             print("-" * 88)
-
-            if getattr(self.config, "DRY_RUN", True):
-                print(
-                    f" USDT {self.balance_usdt:.2f} (凍結{self.frozen_usdt:.0f}) | "
-                    f"BTC {self.balance_btc:.6f} (凍結{self.frozen_btc:.6f}) | "
-                    f"TWD {self.balance_twd:.0f}"
-                )
+            print(
+                f" USDT {self.balance_usdt:.2f} (凍結{self.frozen_usdt:.2f}) | "
+                f"BTC {self.balance_btc:.6f} (凍結{self.frozen_btc:.6f}) | "
+                f"TWD {self.balance_twd:.1f}"
+            )
             print(
                 f" 📊 累計預估手續費: NT${self.total_fee_twd:.2f} (以 MAX Token 支付金額等值折算)"
             )
@@ -1585,7 +1693,18 @@ class DualGridEngine:
             print("-" * 88)
             self._print_leg_table(f"{sell_mkt} 賣出", self.sell_leg, sell_t)
             print("-" * 88)
-
+            print(
+                f"   初始資金: USDT: {self.initial_balances['usdt']:.6f} | BTC: {self.initial_balances['btc']:.6f} | "
+                f"TWD: {self.initial_balances['twd']:.6f} | MAX: {self.initial_balances['max']:.6f} | "
+                f"估值約 {self.initial_balances['btc'] * self.btc_twd_price + self.initial_balances['usdt'] * self.usdt_twd_price + self.initial_balances['twd'] + self.initial_balances['max'] * self.max_twd_price:.2f}TWD"
+            )
+            print(
+                f"   目前資金: USDT: {self.balance_usdt:.6f} | BTC: {self.balance_btc:.6f} | "
+                f"TWD: {self.balance_twd:.6f} | MAX: {self.balance_max - self.total_fee_twd:.6f} | "
+                f"估值約 {(self.balance_btc * self.btc_twd_price) + (self.balance_usdt * self.usdt_twd_price) + self.balance_twd + (self.balance_max * self.max_twd_price) - self.total_fee_twd:.2f}TWD | "
+                f"預估手續費折算約 {self.total_fee_twd:.2f}TWD"
+            )
+            print("-" * 88)
             print(" 【即時日誌】")
             for line in self.logger.history[-8:]:
                 print(f" {line}")
@@ -1673,7 +1792,7 @@ def _row(slot: Dict[str, Any], leg: RollingGridLeg, now: float) -> str:
         price_disp = f"{slot['price']:.0f}"
         nominal_disp = f"{nominal:.0f} USDT"
 
-    return f"{price_disp:<24} | {slot['volume']:<10.4f} | " f"{nominal_disp:<24} | {zh}"
+    return f"{price_disp:<24} | {slot['volume']:<10.6f} | " f"{nominal_disp:<24} | {zh}"
 
 
 async def _main():
