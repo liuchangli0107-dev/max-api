@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import time
 import httpx
 import os
 from engine import MaxExchangeClient, Config
@@ -32,7 +33,10 @@ async def analyze_market():
     data = [("MA20", ma20), ("MA50", ma50), ("MA100", ma100), ("Price", price)]
     sorted_data = sorted(data, key=lambda x: x[1], reverse=True)
 
-    print(f"\n--- 市場趨勢分析報告 ---")
+    now = time.time()
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
+
+    print(f"\n--- 市場趨勢分析報告({now_str}) ---")
     print(f"當前價格: ${price:,.2f}")
     print(f"均線排列 (由大到小):")
     for name, val in sorted_data:
