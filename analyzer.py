@@ -40,7 +40,9 @@ async def analyze_market():
     print(f"當前價格: ${price:,.2f}")
     print(f"均線排列 (由大到小):")
     for name, val in sorted_data:
-        print(f"  {name}: ${val:,.2f}")
+        diff_pct = (price - val) / val * 100 if val else 0.0
+        rel = f"{diff_pct:+.2f}%"
+        print(f"  {name}: ${val:,.2f} ({rel})")
 
     # 狀態判斷
     status = "震盪整理"

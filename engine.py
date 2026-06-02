@@ -889,17 +889,17 @@ class RollingGridLeg:
             if not filled:
                 continue
 
-            # 🔌 SQLite 調整：趁 order_id 尚未被 _on_fill 沖掉前，先錄製成交快照 (FILLED)
+            # 趁 order_id 尚未被 _on_fill 沖掉前，先錄製成交快照 (FILLED)
             self.db_service.record_market_snapshot(
                 "FILLED", self.spec, slot, self.engine
             )
 
             self._on_fill(slot)
 
-            # 💡 修正：動態匯率轉換與精準手續費計算
+            # 動態匯率轉換與精準手續費計算
             rate = (
-                self.engine.btc_twd_price / self.engine.btc_usdt_price
-                if self.engine.btc_usdt_price > 0
+                self.engine.usdt_twd_price
+                if self.engine.usdt_twd_price > 0
                 else 0
             )
             fee_rate = getattr(self.engine.config, "FEE_RATE_MAX_TOKEN", 0.00045)
@@ -997,6 +997,7 @@ class RollingGridLeg:
                 )
             self.engine.balance_btc -= slot["volume"]
         self.engine.balance_max -= fee_max  # 以最大價換算的手續費預留
+        self.engine.total_fee_twd += fee_max * self.engine.btc_twd_price  # 累積預估手續費
 
         # 隨後將最新餘額寫入 DB 或印在 Console
         self.engine.logger.warn(
@@ -1098,6 +1099,7 @@ class RollingGridLeg:
         for price in targets:
             # 這裡內部會調用 _get_or_create_slot，新 Slot 的初始狀態會自動同步入庫
             slot = self._get_or_create_slot(price)
+            side = self.spec.side.upper()
 
             if slot["status"] == self.REJECTED_COOLDOWN:
                 if now < slot["cooldown_until"]:
@@ -1112,12 +1114,12 @@ class RollingGridLeg:
                 continue
 
             if not await self._has_balance(slot):
-                cur = self.spec.quote_currency.upper()
+                cur = self.spec.market.upper()
                 px = fmt_price_for_market(
                     price, self.spec.market, self.spec.price_decimals
                 )
                 self.engine.logger.warn(
-                    f"[{self.spec.label}] {cur} 餘額不足，略過 {px}"
+                    f"[{self.spec.label}] {cur} {side} 餘額不足，略過 {px}"
                 )
                 continue
 
@@ -1490,6 +1492,7 @@ class DualGridEngine:
     async def run_loop(self):
         self.logger.info("開始監控 BTCUSDT / BTCTWD 行情與網格調度...")
         self.initial_balances = await self.get_balances()
+        self.initial_balances['total_twd'] = 0.0
         self.logger.info(f"初始資金記錄完成: {self.initial_balances}")
         while self.is_running:
             try:
@@ -1504,6 +1507,8 @@ class DualGridEngine:
                 )
                 usdt_p = tickers.get(self.config.BUY_MARKET, 0.0)
                 twd_p = tickers.get(self.config.SELL_MARKET, 0.0)
+                btc_usdt_p = tickers.get("btcusdt", 0.0)
+                btc_twd_p = tickers.get("btctwd", 0.0)
                 max_twd_p = tickers.get("maxtwd", 0.0)
                 max_usdt_p = tickers.get("maxusdt", 0.0)
                 usdt_twd_p = tickers.get("usdttwd", 0.0)
@@ -1511,6 +1516,14 @@ class DualGridEngine:
                     self.logger.error("無法獲取必要的市場價格，略過本輪更新")
                     await asyncio.sleep(1.0)
                     continue
+                
+                if self.initial_balances['total_twd'] == 0.0:
+                    self.initial_balances['total_twd'] = self.initial_balances['usdt'] * usdt_twd_p
+                    self.initial_balances['total_twd'] += self.initial_balances['twd']
+                    self.initial_balances['total_twd'] += self.initial_balances['btc'] * btc_twd_p
+                    self.initial_balances['total_twd'] += self.initial_balances['max'] * max_twd_p
+                    self.logger.info(f"初始資金記錄完成: {self.initial_balances}")
+
 
                 now = time.time()
                 # 熔斷保護判定
@@ -1535,16 +1548,16 @@ class DualGridEngine:
                             f"波動熔斷觸發：單輪變動 {chg:.0f} USDT，暫停交易 {getattr(self.config, 'CIRCUIT_BREAKER_COOLDOWN', 15)}s"
                         )
 
-                self.last_btc_usdt_price = self.btc_usdt_price or usdt_p
-                self.btc_usdt_price = usdt_p
-                self.btc_twd_price = twd_p
+                self.last_btc_usdt_price = self.btc_usdt_price or btc_usdt_p
+                self.btc_usdt_price = btc_usdt_p
+                self.btc_twd_price = btc_twd_p
                 self.max_twd_price = max_twd_p
                 self.max_usdt_price = max_usdt_p
                 self.usdt_twd_price = usdt_twd_p
 
                 # 更新 MA50 數據
                 self.current_ma50_price, self.current_ma50 = (
-                    await self._log_ma50_context(usdt_p, self.config.BUY_MARKET)
+                    await self._log_ma50_context(btc_usdt_p, self.config.BUY_MARKET)
                 )
                 self.current_ma50_twd, self.current_ma50_twd_price = (
                     await self._log_ma50_context(twd_p, self.config.SELL_MARKET)
@@ -1696,13 +1709,13 @@ class DualGridEngine:
             print(
                 f"   初始資金: USDT: {self.initial_balances['usdt']:.6f} | BTC: {self.initial_balances['btc']:.6f} | "
                 f"TWD: {self.initial_balances['twd']:.6f} | MAX: {self.initial_balances['max']:.6f} | "
-                f"估值約 {self.initial_balances['btc'] * self.btc_twd_price + self.initial_balances['usdt'] * self.usdt_twd_price + self.initial_balances['twd'] + self.initial_balances['max'] * self.max_twd_price:.2f}TWD"
+                f"估值約 {self.initial_balances['total_twd']:.2f}TWD"
             )
             print(
                 f"   目前資金: USDT: {self.balance_usdt:.6f} | BTC: {self.balance_btc:.6f} | "
-                f"TWD: {self.balance_twd:.6f} | MAX: {self.balance_max - self.total_fee_twd:.6f} | "
-                f"估值約 {(self.balance_btc * self.btc_twd_price) + (self.balance_usdt * self.usdt_twd_price) + self.balance_twd + (self.balance_max * self.max_twd_price) - self.total_fee_twd:.2f}TWD | "
-                f"預估手續費折算約 {self.total_fee_twd:.2f}TWD"
+                f"TWD: {self.balance_twd:.6f} | MAX: {self.balance_max:.6f} | "
+                f"估值約 {(self.balance_btc * self.btc_twd_price) + (self.balance_usdt * self.usdt_twd_price) + self.balance_twd + (self.balance_max * self.max_twd_price):.2f}TWD | "
+                f"預估手續費折算約 {(self.initial_balances['max'] - self.balance_max) * self.max_twd_price:.2f}TWD"
             )
             print("-" * 88)
             print(" 【即時日誌】")
