@@ -1,29 +1,16 @@
-# MAX API v3 下單範例
-import base64
-import hashlib
-import hmac
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+MAX API v3 下單範例
+"""
+
+import asyncio
 import json
-import os
-import time
-import requests
-from pathlib import Path
+from config import Config
+from exchange import MaxExchangeClient
 
-# 讀取 .env 檔案
-env_file = Path(__file__).parent / ".env"
-if env_file.exists():
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                os.environ[key] = value
-
-# 設定環境變數
-MAX_ACCESS_KEY = os.getenv("MAX_ACCESS_KEY")
-MAX_SECRET_KEY = os.getenv("MAX_SECRET_KEY")
-MAX_URL = "https://max-api.maicoin.com"
-
-def create_order(
+async def create_order(
     wallet_type='spot',
     market='btcusdt',
     side='buy',
@@ -37,17 +24,16 @@ def create_order(
     """
     提交買入/賣出訂單 (POST /api/v3/wallet/{path_wallet_type}/order)
     """
-    # 檢查環境變數
-    if not MAX_ACCESS_KEY or not MAX_SECRET_KEY:
-        print("錯誤：請先在 .env 檔案中設置 MAX_ACCESS_KEY 與 MAX_SECRET_KEY")
-        return None
+    client = MaxExchangeClient(
+        api_key=Config.API_KEY,
+        api_secret=Config.API_SECRET,
+        dry_run=Config.DRY_RUN
+    )
 
-    # 依據截圖，API 路徑包含 wallet_type 參數
     path = f"/api/v3/wallet/{wallet_type}/order"
 
     # 1. 準備必要的參數 (包含 nonce 與請求 Body 內容)
     params = {
-        "nonce": int(time.time() * 1000),
         "market": market.lower(),
         "side": side.lower(),
         "volume": str(volume)
@@ -65,40 +51,16 @@ def create_order(
     if group_id is not None:
         params["group_id"] = int(group_id)
 
-    # 2. 構建簽名內容 (將參數字典與 path 合併)
-    params_to_sign = {**params, "path": path}
-    
-    # 轉換為 JSON 字串 (去除多餘空格以確保雜湊值一致)
-    json_str = json.dumps(params_to_sign, separators=(',', ':'))
-
-    # 3. 生成 payload (Base64 編碼)
-    payload = base64.b64encode(json_str.encode()).decode()
-
-    # 4. 計算簽章 (HMAC-SHA256)
-    signature = hmac.new(
-        MAX_SECRET_KEY.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    # 5. 設置 request header
-    headers = {
-        "X-MAX-ACCESSKEY": MAX_ACCESS_KEY,
-        "X-MAX-PAYLOAD": payload,
-        "X-MAX-SIGNATURE": signature,
-        "X-Sub-Account": "main",  # 預設為主帳號
-        "Content-Type": "application/json"
-    }
-
-    # 6. 發送 POST 請求 (參數放在 request body 中)
-    url = f"{MAX_URL}{path}"
-    
+    # 2. 呼叫 client 封裝的簽名與請求機制，避免重複造輪子 (DRY 原則)
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            data=json.dumps(params, separators=(',', ':'))
-        )
+        if client.dry_run:
+            print(f"[DRY RUN] 模擬下單: {params}")
+            return {"state": "wait", "id": 123456}
+
+        headers, _, body_json = client._sign_request(path, params)
+        url = f"{client.base_url}{path}"
+        
+        response = await client.client.post(url, content=body_json, headers=headers)
         print(f"Status Code: {response.status_code}")
         result = response.json()
         print("Response:")
@@ -107,11 +69,13 @@ def create_order(
     except Exception as e:
         print(f"發生錯誤: {e}")
         return None
+    finally:
+        await client.close()
 
-if __name__ == "__main__":
-    # 測試下單範例：限價買入 btcusdt
+
+async def main():
     print("正在提交測試訂單...")
-    create_order(
+    await create_order(
         wallet_type='spot',
         market='btcusdt',
         side='buy',
@@ -119,3 +83,7 @@ if __name__ == "__main__":
         price='20000',
         ord_type='limit'
     )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

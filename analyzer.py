@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import asyncio
 import time
-import httpx
-import os
-from engine import MaxExchangeClient, Config
+from config import Config
+from exchange import MaxExchangeClient
+from logger import send_telegram_notification
 
 async def analyze_market():
     client = MaxExchangeClient(Config.API_KEY, Config.API_SECRET, Config.DRY_RUN)
@@ -36,13 +38,13 @@ async def analyze_market():
     now = time.time()
     now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
 
-    print(f"\n--- 市場趨勢分析報告({now_str}) ---")
-    print(f"當前價格: ${price:,.2f}")
-    print(f"均線排列 (由大到小):")
+    report = f"\n--- 市場趨勢分析報告({now_str}) ---\n"
+    report += f"當前價格: ${price:,.2f}\n"
+    report += f"均線排列 (由大到小):\n"
     for name, val in sorted_data:
         diff_pct = (price - val) / val * 100 if val else 0.0
         rel = f"{diff_pct:+.2f}%"
-        print(f"  {name}: ${val:,.2f} ({rel})")
+        report += f"  {name}: ${val:,.2f} ({rel})\n"
 
     # 狀態判斷
     status = "震盪整理"
@@ -65,8 +67,14 @@ async def analyze_market():
         status = "均線糾結"
         advice = "多空分歧嚴重，變盤前夕，等待突破再進場。"
     
-    print(f"\n狀態: {status}")
-    print(f"操作啟示: {advice}")
+    report += f"\n狀態: {status}\n"
+    report += f"操作啟示: {advice}\n"
+    
+    print(report)
+    
+    # 發送 Telegram 通知
+    await send_telegram_notification(report, force=True)
+
     await client.close()
 
 if __name__ == "__main__":

@@ -7,10 +7,10 @@ MAX 餘額監控腳本
 """
 
 import asyncio
-import os
 import time
-from pathlib import Path
-from engine import Config, MaxExchangeClient, GridDatabaseService
+from config import Config
+from exchange import MaxExchangeClient
+from db import GridDatabaseService
 
 async def record_balances():
     # 初始化資料庫服務
