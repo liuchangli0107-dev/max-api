@@ -31,7 +31,7 @@ class DualGridEngine:
             self.config.DRY_RUN,
             engine=self,
         )
-        
+
         self.start_time = time.time()
 
         # 初始化買方網格
@@ -250,7 +250,7 @@ class DualGridEngine:
     async def run_loop(self):
         self.logger.info("開始監控 BTCUSDT / BTCTWD 行情與網格調度...")
         self.initial_balances = await self.get_balances()
-        self.initial_balances['total_twd'] = 0.0
+        self.initial_balances["total_twd"] = 0.0
         self.logger.info(f"初始資金記錄完成: {self.initial_balances}")
         while self.is_running:
             try:
@@ -274,12 +274,18 @@ class DualGridEngine:
                     self.logger.error("無法獲取必要的市場價格，略過本輪更新")
                     await asyncio.sleep(1.0)
                     continue
-                
-                if self.initial_balances['total_twd'] == 0.0:
-                    self.initial_balances['total_twd'] = self.initial_balances['usdt'] * usdt_twd_p
-                    self.initial_balances['total_twd'] += self.initial_balances['twd']
-                    self.initial_balances['total_twd'] += self.initial_balances['btc'] * btc_twd_p
-                    self.initial_balances['total_twd'] += self.initial_balances['max'] * max_twd_p
+
+                if self.initial_balances["total_twd"] == 0.0:
+                    self.initial_balances["total_twd"] = (
+                        self.initial_balances["usdt"] * usdt_twd_p
+                    )
+                    self.initial_balances["total_twd"] += self.initial_balances["twd"]
+                    self.initial_balances["total_twd"] += (
+                        self.initial_balances["btc"] * btc_twd_p
+                    )
+                    self.initial_balances["total_twd"] += (
+                        self.initial_balances["max"] * max_twd_p
+                    )
                     self.logger.info(f"初始資金記錄完成: {self.initial_balances}")
 
                 now = time.time()

@@ -10,34 +10,29 @@ import json
 from config import Config
 from exchange import MaxExchangeClient
 
+
 async def create_order(
-    wallet_type='spot',
-    market='btcusdt',
-    side='buy',
-    volume='0.001',
-    price='20000',
-    ord_type='limit',
+    wallet_type="spot",
+    market="btcusdt",
+    side="buy",
+    volume="0.001",
+    price="20000",
+    ord_type="limit",
     client_oid=None,
     stop_price=None,
-    group_id=None
+    group_id=None,
 ):
     """
     提交買入/賣出訂單 (POST /api/v3/wallet/{path_wallet_type}/order)
     """
     client = MaxExchangeClient(
-        api_key=Config.API_KEY,
-        api_secret=Config.API_SECRET,
-        dry_run=Config.DRY_RUN
+        api_key=Config.API_KEY, api_secret=Config.API_SECRET, dry_run=Config.DRY_RUN
     )
 
     path = f"/api/v3/wallet/{wallet_type}/order"
 
     # 1. 準備必要的參數 (包含 nonce 與請求 Body 內容)
-    params = {
-        "market": market.lower(),
-        "side": side.lower(),
-        "volume": str(volume)
-    }
+    params = {"market": market.lower(), "side": side.lower(), "volume": str(volume)}
 
     # 根據訂單類型與傳入參數，動態添加選填欄位
     if ord_type:
@@ -59,7 +54,7 @@ async def create_order(
 
         headers, _, body_json = client._sign_request(path, params)
         url = f"{client.base_url}{path}"
-        
+
         response = await client.client.post(url, content=body_json, headers=headers)
         print(f"Status Code: {response.status_code}")
         result = response.json()
@@ -76,12 +71,12 @@ async def create_order(
 async def main():
     print("正在提交測試訂單...")
     await create_order(
-        wallet_type='spot',
-        market='btcusdt',
-        side='buy',
-        volume='0.001',
-        price='20000',
-        ord_type='limit'
+        wallet_type="spot",
+        market="btcusdt",
+        side="buy",
+        volume="0.001",
+        price="20000",
+        ord_type="limit",
     )
 
 

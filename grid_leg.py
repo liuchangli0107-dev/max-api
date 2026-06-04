@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from engine import DualGridEngine
     from exchange import MaxExchangeClient
 
+
 class RollingGridLeg:
     """
     實作單邊滾動網格的邏輯核心，負責計算目標價格區間、監控掛單狀態及執行價格滾動策略。
@@ -31,7 +32,7 @@ class RollingGridLeg:
         self.engine = engine
         self.market_price = 0.0
         self.activated = False
-        self.db_service = GridDatabaseService(Config.DB_FILE)
+        self.db_service = GridDatabaseService()
         self.slots_by_price = {}
         self._validate()
 
@@ -202,11 +203,7 @@ class RollingGridLeg:
             self._on_fill(slot)
 
             # 動態匯率轉換與精準手續費計算
-            rate = (
-                self.engine.usdt_twd_price
-                if self.engine.usdt_twd_price > 0
-                else 0
-            )
+            rate = self.engine.usdt_twd_price if self.engine.usdt_twd_price > 0 else 0
             fee_rate = getattr(self.engine.config, "FEE_RATE_MAX_TOKEN", 0.00045)
 
             if self.spec.side == "buy":
@@ -252,9 +249,7 @@ class RollingGridLeg:
         except Exception:
             return False
 
-    def update_simulated_wallet(
-        self, slot: Dict[str, Any], price: float, side: str
-    ):
+    def update_simulated_wallet(self, slot: Dict[str, Any], price: float, side: str):
         self.engine.logger.warn(
             f"模擬錢包變動前: price={price}, side={side}, volume={slot['volume']}"
         )
@@ -302,7 +297,9 @@ class RollingGridLeg:
                 )
             self.engine.balance_btc -= slot["volume"]
         self.engine.balance_max -= fee_max  # 以最大價換算的手續費預留
-        self.engine.total_fee_twd += fee_max * self.engine.btc_twd_price  # 累積預估手續費
+        self.engine.total_fee_twd += (
+            fee_max * self.engine.btc_twd_price
+        )  # 累積預估手續費
 
         # 隨後將最新餘額寫入 DB 或印在 Console
         self.engine.logger.warn(
@@ -466,7 +463,9 @@ class RollingGridLeg:
 
         # 💡 修正：計算該訂單建立時的預估台幣手續費金額
         if self.spec.side == "buy":
-            est_fee_twd = vol * self.engine.btc_twd_price * self.engine.config.FEE_RATE_MAX_TOKEN
+            est_fee_twd = (
+                vol * self.engine.btc_twd_price * self.engine.config.FEE_RATE_MAX_TOKEN
+            )
         else:
             # 賣單的名目是 50 USDT，必須先乘上即時匯率轉成台幣，再算手續費
             est_fee_twd = (

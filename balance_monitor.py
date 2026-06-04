@@ -14,7 +14,7 @@ from db import GridDatabaseService
 
 async def record_balances():
     # 初始化資料庫服務
-    db_service = GridDatabaseService(db_file=Config.DB_FILE)
+    db_service = GridDatabaseService()
     
     # 初始化交易所客戶端
     client = MaxExchangeClient(

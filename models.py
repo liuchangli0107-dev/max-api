@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 from config import Config
 
+
 @dataclass
 class GridLegSpec:
     """單邊滾動網格參數"""

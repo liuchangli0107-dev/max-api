@@ -48,6 +48,7 @@
 | **移動平均線** | `MA50_ENABLED`, `MA50_KLINE_PERIOD`, `MA50_LENGTH` | MA50 趨勢檢查開關、週期與均線長度 |
 | **風控與費用** | `SPIKE_THRESHOLD_USDT`, `BAD_DATA_THRESHOLD_PCT` | 波動熔斷、髒數據過濾閾值 |
 | **費用與延遲** | `FEE_RATE_MAX_TOKEN`, `POST_ONLY_RETRY_COOLDOWN` | 交易手續費率、掛單失敗重試冷卻秒數 |
+| **成本價格** | `COST_PRICE` | analyzer.py 中成本價比對 |
 
 ---
 

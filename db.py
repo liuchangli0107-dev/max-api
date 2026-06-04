@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, List
 from config import Config
 
+
 class GridDatabaseService:
     """
     提供 SQLite 資料庫互動層，負責網格狀態的 ACID 事務處理、市場快照記錄、帳戶餘額存取及啟動時的狀態還原（Persistence）。
@@ -13,8 +14,8 @@ class GridDatabaseService:
         - 市場快照表：記錄下單/成交當下的完整市場生態環境。
     """
 
-    def __init__(self, db_file: str = "grid_state.db"):
-        self.db_file = db_file
+    def __init__(self):
+        self.db_file = Config.DB_FILE
         self._init_db()
 
     def _init_db(self):
@@ -56,6 +57,11 @@ class GridDatabaseService:
                 )
             """)
 
+            # 建立索引優化未來的歷史數據查詢
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_snapshot_time ON market_snapshots(timestamp)"
+            )
+
             # 3. 帳戶餘額歷史記錄表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS account_balance_history (
@@ -65,11 +71,6 @@ class GridDatabaseService:
                     timestamp TEXT
                 )
             """)
-
-            # 建立索引優化未來的歷史數據查詢
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_snapshot_time ON market_snapshots(timestamp)"
-            )
             conn.commit()
 
     def load_saved_slots(self, market: str, side: str) -> Dict[float, Dict[str, Any]]:

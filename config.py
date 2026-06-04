@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 
+
 class Config:
     """
     負責載入與解析環境變數（.env 或系統環境變數），並將其實例化為全域配置物件，確保網格參數、API 金鑰及日誌路徑正確載入。
@@ -81,6 +82,8 @@ class Config:
         MA50_ENABLED = os.environ.get("MA50_ENABLED", "True").lower() == "true"
         MA50_KLINE_PERIOD = int(os.environ.get("MA50_KLINE_PERIOD", 1440))
         MA50_LENGTH = int(os.environ.get("MA50_LENGTH", 50))
+        
+        COST_PRICE = float(os.environ.get("COST_PRICE", 0.0))
 
     except KeyError as e:
         print(f"❌ .env 設定錯誤：缺少必要參數 {e}")

@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from config import Config
 from models import _json_compact
 
+
 class MaxExchangeClient:
     """
     封裝與 MAX 交易所 API 的溝通邏輯，處理 Request 簽名（HMAC-SHA256）、認證頭部資訊（Headers）生成及非同步 HTTP 請求執行。

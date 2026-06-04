@@ -10,6 +10,7 @@ from timed_size_handler import TimedSizeRotatingFileHandler
 from config import Config
 from models import fmt_btc, fmt_price_for_market
 
+
 async def send_telegram_notification(msg: str, force: bool = False):
     # 💡 如果是模擬模式 (DRY_RUN = True) 且未設定強制發送，則直接擋掉
     if not force and getattr(Config, "DRY_RUN", True):
