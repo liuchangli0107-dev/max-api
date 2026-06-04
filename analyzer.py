@@ -57,9 +57,9 @@ async def analyze_market():
 
     now = time.time()
     now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
-    
+
     report = f"\n--- 市場趨勢分析報告({now_str}) ---\n"
-    
+
     cost_price = Config.COST_PRICE
     if cost_price:
         cost_diff_pct = (price - cost_price) / cost_price * 100
@@ -67,7 +67,7 @@ async def analyze_market():
         report += f"當前價格: ${price:,.2f} (成本價: ${cost_price:,.2f}, {cost_rel})\n"
     else:
         report += f"當前價格: ${price:,.2f}\n"
-        
+
     report += f"均線排列 (由大到小):\n"
     for name, val in sorted_data:
         diff_pct = (price - val) / val * 100 if val else 0.0
@@ -110,5 +110,20 @@ async def analyze_market():
     await client.close()
 
 
+async def main_loop():
+    print("啟動 MAX 交易所監控服務...")
+    while True:
+        try:
+            # 執行原本的分析邏輯
+            await analyze_market()
+
+        except Exception as e:
+            print(f"執行發生錯誤: {e}")
+
+        # 暫停一段時間再執行下一次 (例如 3600 秒 = 1 小時)
+        print("進入休眠，等待下一次分析...")
+        await asyncio.sleep(Config.SLEEP_INTERVAL)
+
+
 if __name__ == "__main__":
-    asyncio.run(analyze_market())
+    asyncio.run(main_loop())

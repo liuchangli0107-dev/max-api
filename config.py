@@ -84,7 +84,7 @@ class Config:
         MA50_LENGTH = int(os.environ.get("MA50_LENGTH", 50))
         
         COST_PRICE = float(os.environ.get("COST_PRICE", 0.0))
-
+        SLEEP_INTERVAL = int(os.environ.get("SLEEP_INTERVAL", 3600))
     except KeyError as e:
         print(f"❌ .env 設定錯誤：缺少必要參數 {e}")
         sys.exit(1)
