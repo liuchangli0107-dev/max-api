@@ -413,9 +413,13 @@ class DualGridEngine:
                     print(
                         f" {buy_mkt} 50MA: {self.current_ma50:.2f} | 現價: {self.btc_usdt_price:.2f}"
                     )
-                if self.current_ma50_twd > 0:
+                if self.current_ma50_twd > 0 and sell_mkt == "btctwd":
                     print(
                         f" {sell_mkt}  50MA: {self.current_ma50_twd:.1f} | 現價: {self.btc_twd_price:.1f}"
+                    )
+                if self.current_ma50 > 0 and sell_mkt != "btcusdt":
+                    print(
+                        f" {sell_mkt} 50MA: {self.current_ma50:.2f} | 現價: {self.btc_usdt_price:.2f}"
                     )
             else:
                 print(

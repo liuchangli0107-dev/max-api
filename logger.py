@@ -36,7 +36,7 @@ def setup_file_logger(log_filename: str):
 
     # 避免重複綁定 Handler 導致重複印出
     if not file_logger.handlers:
-        # 使用自訂的 TimedSizeRotatingFileHandler (最大 5MB，保留 3 個備份，帶時間戳檔名)
+        #
         handler = TimedSizeRotatingFileHandler(
             log_filename, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
         )

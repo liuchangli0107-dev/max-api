@@ -5,6 +5,10 @@ from logging.handlers import BaseRotatingHandler
 
 
 class TimedSizeRotatingFileHandler(BaseRotatingHandler):
+    """
+    使用自訂檔案 (最大 5MB，保留 3 個備份，帶時間戳檔名)
+    """
+
     def __init__(
         self, filename, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
     ):

@@ -28,9 +28,9 @@ class Config:
         DRY_RUN_INITIAL_TWD = float(os.environ.get("DRY_RUN_INITIAL_TWD"))
 
         # 根據運行模式，自動物理隔離資料庫，確保模擬與實盤數據絕不污染
-        if DRY_RUN:
-            DB_FILE = os.environ.get("DB_FILE", "grid_state_dryrun.db")
-            LOG_FILE = os.environ.get("LOG_FILE", "grid_state_dryrun.log")
+        if DRY_RUN == True:
+            DB_FILE = 'grid_state_dryrun.db'
+            LOG_FILE = 'grid_state_dryrun.log'
         else:
             DB_FILE = os.environ.get("DB_FILE", "grid_state_live.db")
             LOG_FILE = os.environ.get("LOG_FILE", "grid_state_live.log")
