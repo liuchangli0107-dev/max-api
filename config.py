@@ -4,6 +4,7 @@
 import os
 import sys
 from pathlib import Path
+import time
 
 
 class Config:
@@ -30,10 +31,10 @@ class Config:
         # 根據運行模式，自動物理隔離資料庫，確保模擬與實盤數據絕不污染
         if DRY_RUN == True:
             DB_FILE = 'grid_state_dryrun.db'
-            LOG_FILE = 'grid_state_dryrun.log'
+            LOG_FILE = f"grid_state_dryrun_{time.strftime('%Y%m%d%H%M%S')}.log"
         else:
             DB_FILE = os.environ.get("DB_FILE", "grid_state_live.db")
-            LOG_FILE = os.environ.get("LOG_FILE", "grid_state_live.log")
+            LOG_FILE = f"grid_state_live_{time.strftime('%Y%m%d%H%M%S')}.log"
 
         # --- 網格共用核心參數 (強制以 USDT 為計價基準) ---
         GRID_STEP = float(os.environ["GRID_STEP"])  # 買賣共用的網格間距 (USDT)

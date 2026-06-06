@@ -5,7 +5,7 @@ import asyncio
 import time
 from config import Config
 from exchange import MaxExchangeClient
-from logger import send_telegram_notification
+from logger import GridLogger, send_telegram_notification
 
 
 async def analyze_market(price_list=[]):
@@ -13,6 +13,8 @@ async def analyze_market(price_list=[]):
     report = "--- MAX 市場趨勢分析報告 ---\n\n"
     markets = list(price_list.keys())
     tickers = await client.get_tickers_batch(markets)
+    log_file = f"analyzer_{time.strftime('%Y%m%d%H%M%S')}.log"
+    logger = GridLogger(max_history=5, log_file=log_file)
 
     for market in markets:
 
@@ -114,6 +116,8 @@ async def analyze_market(price_list=[]):
     
     report += f"報告生成時間: {now_str}\n"
     print(report)
+    
+    logger.info(report)  # 同時記錄到檔案日誌
 
     # 發送 Telegram 通知
     await send_telegram_notification(report, force=True)

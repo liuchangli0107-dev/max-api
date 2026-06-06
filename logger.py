@@ -60,13 +60,13 @@ class GridLogger:
         - api_submit/order_success/order_cancel/order_filled: 專門針對 API 交易事件的結構化日誌方法，提供統一格式化輸出並包含關鍵交易資訊（價格、數量、市價比較、預估手續費等）。
     """
 
-    def __init__(self, max_history: int = 5):
+    def __init__(self, max_history: int = 5, log_file: Optional[str] = None):
         # 供終端機儀表板顯示的近期日誌
         self.history = []
         self.max_history = max_history
 
         # 🔌 初始化檔案 Logger (會自動處理檔案輪轉與 DRY_RUN 隔離)
-        self.file_logger = setup_file_logger(Config.LOG_FILE)
+        self.file_logger = setup_file_logger(log_file or Config.LOG_FILE)
 
     def _emit(self, level: str, msg: str) -> None:
         """
