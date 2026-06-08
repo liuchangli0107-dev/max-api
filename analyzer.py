@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import os
 import time
 from config import Config
 from exchange import MaxExchangeClient
@@ -10,7 +11,9 @@ from logger import GridLogger, send_telegram_notification
 
 async def analyze_market(price_list=[]):
     client = MaxExchangeClient(Config.API_KEY, Config.API_SECRET, Config.DRY_RUN)
-    report = "--- MAX 市場趨勢分析報告 ---\n\n"
+    report = "=" * 24 + "\n"
+    report += "  MAX 市場趨勢分析報告\n"
+    report += "=" * 24 + "\n\n"
     markets = list(price_list.keys())
     tickers = await client.get_tickers_batch(markets)
     log_file = f"analyzer_{time.strftime('%Y%m%d%H%M%S')}.log"
@@ -65,7 +68,11 @@ async def analyze_market(price_list=[]):
 
         report += f" 📊 {market.upper()}\n"
         if price_list[market] is not None:
-            price_diff_pct = (price - price_list[market]) / price_list[market] * 100 if price_list[market] else 0.0
+            price_diff_pct = (
+                (price - price_list[market]) / price_list[market] * 100
+                if price_list[market]
+                else 0.0
+            )
             price_rel = f"{price_diff_pct:+.2f}%"
             report += f"當前價格: ${price:,.2f} ({price_rel})\n"
         else:
@@ -101,7 +108,7 @@ async def analyze_market(price_list=[]):
             advice = "這通常是洗盤區間。只要現價不跌破 MA100，長線牛市架構就沒壞。您的網格機器人將買單區間設在 MA50 以下到 MA100 之間，正好就是利用了這種「修正行情」進行分批接單。"
         # 均線糾結
         elif abs(ma20 - ma100) / ma100 < 0.02:
-            status = "均線糾結 (Convergence)"
+            status = f"均線糾結 (Convergence) {abs(ma20 - ma100) / ma100:.2%}"
             advice = "此時不適合預測漲跌，而應採取「觀望」或「突破策略」（等待價格強勢突破糾結區間後再進場）。"
 
         report += f"\n狀態: {status}\n"
@@ -113,10 +120,10 @@ async def analyze_market(price_list=[]):
 
         report += "\n\n"
         price_list[market] = price
-    
-    report += f"報告生成時間: {now_str}\n"
+
+    report += f"報告生成時間: {now_str}\n\n"
     print(report)
-    
+
     logger.info(report)  # 同時記錄到檔案日誌
 
     # 發送 Telegram 通知
@@ -134,16 +141,21 @@ async def main_loop():
     }
     while True:
         try:
+            os.system("cls" if os.name == "nt" else "clear")
             # 執行原本的分析邏輯
             price_list = await analyze_market(price_list)
+            # 暫停一段時間再執行下一次 (例如 3600 秒 = 1 小時)
+            print("進入休眠，等待下一次分析...")
+            await asyncio.sleep(Config.SLEEP_INTERVAL)
 
         except Exception as e:
             print(f"執行發生錯誤: {e}")
-
-        # 暫停一段時間再執行下一次 (例如 3600 秒 = 1 小時)
-        print("進入休眠，等待下一次分析...")
-        await asyncio.sleep(Config.SLEEP_INTERVAL)
+        finally:
+            print("服務已停止。")
 
 
 if __name__ == "__main__":
-    asyncio.run(main_loop())
+    try:
+        asyncio.run(main_loop())
+    except KeyboardInterrupt:
+        pass
