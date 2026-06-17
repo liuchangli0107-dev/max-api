@@ -11,7 +11,7 @@ from config import Config
 from models import fmt_btc, fmt_price_for_market
 
 
-async def send_telegram_notification(msg: str, force: bool = False):
+async def send_telegram_notification(msg: str, force: bool = False, parse_mode: Optional[str] = None):
     # 💡 如果是模擬模式 (DRY_RUN = True) 且未設定強制發送，則直接擋掉
     if not force and getattr(Config, "DRY_RUN", True):
         return
@@ -20,9 +20,12 @@ async def send_telegram_notification(msg: str, force: bool = False):
     if not token or not chat_id:
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": msg}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(url, json={"chat_id": chat_id, "text": msg})
+            await client.post(url, json=payload)
         except Exception:
             pass
 
